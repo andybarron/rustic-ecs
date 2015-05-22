@@ -1,0 +1,5 @@
+[package]
+
+name = "recs"
+version = "1.0.0"
+authors = ["Andy Barron <AndrewLBarron@gmail.com>"]
