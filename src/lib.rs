@@ -1,3 +1,34 @@
+//! Simple entity-component system. Pure Rust (macro-free)!
+//!
+//! # Example
+//! ```
+//! extern crate recs;
+//! use recs::{Ecs, EntityId};
+//!
+//! #[derive(Clone, PartialEq)]
+//! struct Age{years: u32}
+//!
+//! #[derive(Clone, PartialEq)]
+//! struct Brain{iq: i32}
+//!
+//! fn main() {
+//!     // Create an ECS instance
+//!     let mut ecs: Ecs = Ecs::new();
+//!     // Add entity to the system
+//!     let me: EntityId = ecs.create_entity();
+//!     // Attach component to the entity
+//!     ecs.set(me, &Age{years: 22});
+//!     // Get attached component data from entity
+//!     let older = ecs.get::<Age>(me).unwrap().years + 1;
+//!     // Modify an entity's component
+//!     ecs.set(me, &Age{years: older});
+//!     // It works!
+//!     assert!(ecs.get::<Age>(me) == Some(Age{years: 23}));
+//!     assert!(ecs.get::<Brain>(me) == None); // Aw man...
+//! }
+//! ```
+// TODO iterate every E/C pair
+// TODO iterate every E and its C's
 use std::any::{TypeId, Any};
 use std::collections::HashMap;
 use std::collections::hash_map::{Iter, IterMut, Keys};
@@ -15,17 +46,10 @@ pub type EntityId = u64;
 /// Notice that `Ecs` itself has no type parameters. Its methods to interact
 /// with components do, but runtime reflection (via `std::any::TypeId`) is
 /// used to retrieve components from an internal `HashMap`. Therefore, you
-/// can create and use any data structure you want for components.
+/// can create and use any data structure you want for components, provided
+/// that they implement `Clone`.
 ///
-/// It is highly recommended that you implement Clone for your
-/// components, so you can use the non-borrowing `set` and `get` methods
-/// to add, modify, and read from your components.
-///
-/// If your components do not implement Clone, you will have to use `consume`
-/// to add or update them in the entity-component system, which moves the
-/// provided component. You will also have to use `borrow` to read components,
-/// or `borrow_mut` to modify them in-place, both of which cause the `Ecs`
-/// instance to become borrowed.
+/// Tip: `#[derive(Clone)]` will make your life a little easier :-)
 pub struct Ecs {
   ids: EntityId,
   data: HashMap<EntityId, ComponentSet>,
@@ -89,23 +113,16 @@ impl ComponentSet {
   fn get<C: Any + Clone>(&self) -> Option<C> {
     self.borrow::<C>().map(Clone::clone)
   }
-  fn contains<C: Any>(&self) -> bool {
+  fn contains<C: Any + Clone>(&self) -> bool {
     self.map.contains_key(&TypeId::of::<C>())
   }
-  fn consume<C: Any>(&mut self, component: C) -> Option<Box<C>> {
-    self.map.insert(TypeId::of::<C>(), Box::new(component)).map(|old| {
-      old.downcast::<C>().ok().expect(
-        "ComponentSet.consume: internal downcast error")
+  fn borrow<C: Any + Clone>(&self) -> Option<&C> {
+    self.map.get(&TypeId::of::<C>()).map(|c| {
+      c.downcast_ref()
+        .expect("ComponentSet.borrow: internal downcast error")
     })
   }
-  fn borrow<C: Any>(&self) -> Option<&C> {
-    match self.map.get(&TypeId::of::<C>()) {
-      Some(c) => Some(c.downcast_ref()
-        .expect("ComponentSet.get: internal downcast error")),
-      None => None,
-    }
-  }
-  fn borrow_mut<C: Any>(&mut self) -> Option<&mut C> {
+  fn borrow_mut<C: Any + Clone>(&mut self) -> Option<&mut C> {
     match self.map.get_mut(&TypeId::of::<C>()) {
       Some(c) => Some(c.downcast_mut()
         .expect("ComponentSet.get_mut: internal downcast error")),
@@ -142,23 +159,23 @@ impl Ecs {
   pub fn has_entity(&self, id: EntityId) -> bool {
     self.data.contains_key(&id)
   }
-  /// Destroy the provided entity, removing any of its components as well.
+  /// Destroy the provided entity, automatically removing any of its
+  /// components.
   ///
   /// Return `true` if the entity existed and was successfully deleted;
-  /// returns `false` if the provided entity ID was not found in the system.
+  /// return `false` if the provided entity ID was not found in the system.
   pub fn destroy_entity(&mut self, id: EntityId) -> bool {
-    match self.data.remove(&id) {
-      Some(..) => true, // ok
-      None => false,
-    }
+    self.data.remove(&id).is_some()
   }
   /// For the specified entity, add a component of type `C` to the system.
   ///
   /// If the entity already has a component of type `C`, it is returned
   /// and overwritten.
   ///
-  /// It is recommended that your component types implement `Clone` so that
-  /// `set` can be used. Otherwise, see `consume`.
+  /// To modify a component in place, see `borrow_mut`.
+  ///
+  /// # Panics
+  /// Panics if the requested entity does not exist.
   pub fn set<C: Any + Clone>(&mut self, id: EntityId, comp: &C)
     -> Option<C>
   {
@@ -166,51 +183,72 @@ impl Ecs {
       .expect(&format!("Ecs.set: nil entity {}", id))
       .set(comp)
   }
+  /// Return a clone of the requested entity's component of type `C`, or
+  /// `None` if the entity does not have that component.
+  ///
+  /// To examine a component without copying, see `borrow`.
+  ///
+  /// # Panics
+  /// Panics if the requested entity does not exist.
   pub fn get<C: Any + Clone>(&self, id: EntityId) -> Option<C> {
     self.data.get(&id)
       .expect(&format!("Ecs.get: nil entity {}", id))
       .get::<C>()
   }
-  pub fn has<C: Any>(&self, id: EntityId) -> bool {
-    match self.data.get(&id) {
-      Some(components) => components.contains::<C>(),
-      None => panic!("Ecs.has: nil entity {}", id),
-    }
+  /// Return `true` Panics if the requested entity has a component of type `C`.
+  pub fn has<C: Any + Clone>(&self, id: EntityId) -> bool {
+    self.data.get(&id)
+      .expect(&format!("Ecs.has: nil entity {}", id))
+      .contains::<C>()
   }
-  pub fn consume<C: Any>(&mut self, id: EntityId, component: C)
-    -> Option<Box<C>>
-  {
-    match self.data.get_mut(&id) {
-      Some(components) => components.consume(component),
-      None => panic!("Ecs.consume: nil entity {}", id)
-    }
+  /// Return a reference to the requested entity's component of type `C`, or
+  /// `None` if the entity does not have that component.
+  ///
+  /// # Panics
+  /// Panics if the requested entity does not exist.
+  pub fn borrow<C: Any + Clone>(&self, id: EntityId) -> Option<&C> {
+    self.data.get(&id)
+      .expect(&format!("Ecs.borrow: nil entity {}", id))
+      .borrow()
   }
-  pub fn borrow<C: Any>(&self, id: EntityId) -> Option<&C> {
-    match self.data.get(&id) {
-      Some(components) => components.borrow::<C>(),
-      None => panic!("Ecs.borrow: nil entity {}", id),
-    }
-  }
-  pub fn borrow_mut<C: Any>(&mut self, id: EntityId)
+  /// Return a mutable reference to the requested entity's component of type
+  /// `C`, or `None` if the entity does not have that component.
+  ///
+  /// # Panics
+  /// Panics if the requested entity does not exist.
+  pub fn borrow_mut<C: Any + Clone>(&mut self, id: EntityId)
     -> Option<&mut C>
   {
-    match self.data.get_mut(&id) {
-      Some(components) => components.borrow_mut::<C>(),
-      None => panic!("Ecs.borrow_mut: nil entity {}", id),
-    }
+    self.data.get_mut(&id)
+      .expect(&format!("Ecs.borrow: nil entity {}", id))
+      .borrow_mut()
   }
+  /// Return an iterator over every ID in the system.
   pub fn iter_ids(&self) -> EntityIdIter {
     EntityIdIter{iter: self.data.keys()}
   }
+  /// Return a vector containing copies of every ID in the system.
+  ///
+  /// Useful for accessing entity IDs without borrowing the ECS.
   pub fn collect_ids(&self) -> Vec<EntityId> {
     self.iter_ids().collect()
   }
+  /// Return an iterator yielding references to all components of the
+  /// requested entity.
+  ///
+  /// # Panics
+  /// Panics if the requested entity does not exist.
   pub fn iter_components(&self, id: EntityId) -> ComponentIter {
     match self.data.get(&id) {
       Some(components) => components.iter(),
       None => panic!("Ecs.iter_components: nil entity {}", id),
     }
   }
+  /// Return an iterator yielding mutable references to all components of the
+  /// requested entity.
+  ///
+  /// # Panics
+  /// Panics if the requested entity does not exist.
   pub fn iter_components_mut(&mut self, id: EntityId) -> ComponentIterMut
   {
     match self.data.get_mut(&id) {
