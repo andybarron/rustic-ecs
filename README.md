@@ -1,4 +1,4 @@
-Rustic Entity-Component System
+Rustic Entity-Component System [![Build Status](https://travis-ci.org/AndyBarron/rustic-ecs.svg?branch=master)](https://travis-ci.org/AndyBarron/rustic-ecs)
 ==============================
 Simple entity-component system in pure Rust. Type reflection - no macros!
 
