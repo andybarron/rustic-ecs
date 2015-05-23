@@ -3,8 +3,29 @@ use std::collections::HashMap;
 use std::collections::hash_map::{Iter, IterMut, Keys};
 use std::ops::{Deref, DerefMut};
 
+/// Value type representing an entry in the entity-component system.
+///
+/// `EntityId` is an alias to `u64`. When storing Entity IDs, `EntityId`
+/// should always be used in place of `u64` to ensure forwards compatiblity
+/// with potential implementation changes.
 pub type EntityId = u64;
 
+/// Primary data structure containing entity and component data.
+///
+/// Notice that `Ecs` itself has no type parameters. Its methods to interact
+/// with components do, but runtime reflection (via `std::any::TypeId`) is
+/// used to retrieve components from an internal `HashMap`. Therefore, you
+/// can create and use any data structure you want for components.
+///
+/// It is highly recommended that you implement Clone for your
+/// components, so you can use the non-borrowing `set` and `get` methods
+/// to add, modify, and read from your components.
+///
+/// If your components do not implement Clone, you will have to use `consume`
+/// to add or update them in the entity-component system, which moves the
+/// provided component. You will also have to use `borrow` to read components,
+/// or `borrow_mut` to modify them in-place, both of which cause the `Ecs`
+/// instance to become borrowed.
 pub struct Ecs {
   ids: EntityId,
   data: HashMap<EntityId, ComponentSet>,
@@ -14,14 +35,17 @@ struct ComponentSet {
   map: HashMap<TypeId, Box<Any>>,
 }
 
+/// Iterator for entity IDs.
 pub struct EntityIdIter<'a> {
   iter: Keys<'a, EntityId, ComponentSet>
 }
 
+/// Iterator that yields references to ECS components.
 pub struct ComponentIter<'a> {
   iter: Iter<'a, TypeId, Box<Any>>
 }
 
+/// Iterator that yields mutable references to ECS components.
 pub struct ComponentIterMut<'a> {
   iter: IterMut<'a, TypeId, Box<Any>>
 }
@@ -106,24 +130,35 @@ impl Default for Ecs {
 }
 
 impl Ecs {
-  /* instantiation */
+  /// Create a new and empty entity-component system (ECS).
   pub fn new() -> Self { Self::default() }
-  /* entities */
+  /// Create a new entity in the ECS with no components, and return its ID.
   pub fn create_entity(&mut self) -> EntityId {
     self.ids += 1;
     self.data.insert(self.ids, Default::default());
     self.ids
   }
+  /// Return `true` if the provided entity exists in this system.
   pub fn has_entity(&self, id: EntityId) -> bool {
     self.data.contains_key(&id)
   }
-  pub fn destroy_entity(&mut self, id: EntityId) {
+  /// Destroy the provided entity, removing any of its components as well.
+  ///
+  /// Return `true` if the entity existed and was successfully deleted;
+  /// returns `false` if the provided entity ID was not found in the system.
+  pub fn destroy_entity(&mut self, id: EntityId) -> bool {
     match self.data.remove(&id) {
-      Some(..) => (), // ok
-      None => panic!("Ecs.destroy_entity: nil entity {}", id),
+      Some(..) => true, // ok
+      None => false,
     }
   }
-  /* components */
+  /// For the specified entity, add a component of type `C` to the system.
+  ///
+  /// If the entity already has a component of type `C`, it is returned
+  /// and overwritten.
+  ///
+  /// It is recommended that your component types implement `Clone` so that
+  /// `set` can be used. Otherwise, see `consume`.
   pub fn set<C: Any + Clone>(&mut self, id: EntityId, comp: &C)
     -> Option<C>
   {
