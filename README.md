@@ -39,3 +39,7 @@ fn main() {
     assert!(ecs.get::<Brain>(me) == None); // Aw man...
 }
 ```
+
+License
+-------
+MIT. Hooray!

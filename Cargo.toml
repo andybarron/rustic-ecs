@@ -3,3 +3,13 @@
 name = "recs"
 version = "1.0.0"
 authors = ["Andy Barron <AndrewLBarron@gmail.com>"]
+
+description = "Simple entity-component system in pure Rust. Type reflection - no macros!"
+
+repository = "https://github.com/andybarron/rustic-ecs"
+
+readme = "./README.md"
+
+keywords = ["entity", "entity-component", "component", "system", "ecs"]
+
+license = "MIT"
