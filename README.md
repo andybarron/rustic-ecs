@@ -1,15 +1,19 @@
-Rustic Entity-Component System [![Build Status](https://travis-ci.org/AndyBarron/rustic-ecs.svg?branch=master)](https://travis-ci.org/AndyBarron/rustic-ecs)
+Rustic Entity-Component System
 ==============================
 Simple entity-component system in pure Rust. Type reflection - no macros!
 
+[![Build Status](https://travis-ci.org/AndyBarron/rustic-ecs.svg?branch=master)](https://travis-ci.org/AndyBarron/rustic-ecs)
+
 Install
 -------
-Using Cargo, just add the following to your `Cargo.toml`:
-```
-[dependencies.recs]
-git = "https://github.com/andybarron/rustic-ecs"
-```
-(Coming soon to crates.io!)
+Visit [the crates.io page](https://crates.io/crates/recs), and add the
+specified line ("`recs = ...`") to the `[dependencies]` section of your
+Cargo.toml. Then `cargo build` should automatically download and compile
+Rustic ECS.
+
+Documentation
+-------------
+Run `cargo doc`, then open `target/doc/recs/index.html` in your browser.
 
 Example
 -------
