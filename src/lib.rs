@@ -33,6 +33,7 @@ use std::any::{TypeId, Any};
 use std::collections::HashMap;
 use std::collections::hash_map::{Iter, IterMut, Keys};
 use std::ops::{Deref, DerefMut};
+use std::marker::PhantomData;
 
 /// Value type representing an entry in the entity-component system.
 ///
@@ -64,6 +65,12 @@ pub struct EntityIdIter<'a> {
   iter: Keys<'a, EntityId, ComponentSet>
 }
 
+/// Iterator for entity IDs filtered by component.
+pub struct EntityIdFilter<'a, C: Any + Clone> {
+  iter: Iter<'a, EntityId, ComponentSet>,
+  _p: PhantomData<C>,
+}
+
 /// Iterator that yields references to ECS components.
 pub struct ComponentIter<'a> {
   iter: Iter<'a, TypeId, Box<Any>>
@@ -78,6 +85,22 @@ impl<'a> Iterator for EntityIdIter<'a> {
   type Item = EntityId;
   fn next(&mut self) -> Option<Self::Item> {
     self.iter.next().map(|id| *id)
+  }
+}
+
+impl<'a, C> Iterator for EntityIdFilter<'a, C> where C: Any + Clone {
+  type Item = EntityId;
+  fn next(&mut self) -> Option<Self::Item> {
+    loop {
+      match self.iter.next() {
+        None => return None,
+        Some((id, set)) => if set.contains::<C>() {
+          return Some(*id);
+        } else {
+          continue;
+        },
+      }
+    }
   }
 }
 
@@ -236,6 +259,17 @@ impl Ecs {
   /// Useful for accessing entity IDs without borrowing the ECS.
   pub fn collect_ids(&self) -> Vec<EntityId> {
     self.iter_ids().collect()
+  }
+  /// Return an iterator over every ID with the specified component type.
+  pub fn iter_with<C: Any + Clone>(&self) -> EntityIdFilter<C> {
+    EntityIdFilter{iter: self.data.iter(), _p: PhantomData}
+  }
+  /// Return a vector containing copies of every ID in the system with the
+  /// specified component type.
+  ///
+  /// Useful for accessing filtered entity IDs without borrowing the ECS.
+  pub fn collect_with<C: Any + Clone>(&self) -> Vec<EntityId> {
+    self.iter_with::<C>().collect()
   }
   /// Return an iterator yielding references to all components of the
   /// requested entity.
