@@ -125,7 +125,7 @@ impl ComponentSet {
   fn borrow_mut<C: Any + Clone>(&mut self) -> Option<&mut C> {
     match self.map.get_mut(&TypeId::of::<C>()) {
       Some(c) => Some(c.downcast_mut()
-        .expect("ComponentSet.get_mut: internal downcast error")),
+        .expect("ComponentSet.borrow_mut: internal downcast error")),
       None => None,
     }
   }
@@ -195,7 +195,11 @@ impl Ecs {
       .expect(&format!("Ecs.get: nil entity {}", id))
       .get::<C>()
   }
-  /// Return `true` Panics if the requested entity has a component of type `C`.
+  /// Return `true` if the specified entity has a component of type `C
+  /// in the system.
+  ///
+  /// # Panics
+  /// Panics if the requested entity does not exist.
   pub fn has<C: Any + Clone>(&self, id: EntityId) -> bool {
     self.data.get(&id)
       .expect(&format!("Ecs.has: nil entity {}", id))
