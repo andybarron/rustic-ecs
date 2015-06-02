@@ -35,6 +35,8 @@ use std::collections::hash_map::{Iter, IterMut, Keys};
 use std::ops::{Deref, DerefMut};
 use std::marker::PhantomData;
 
+
+
 /// Value type representing an entry in the entity-component system.
 ///
 /// `EntityId` is an alias to `u64`. When storing Entity IDs, `EntityId`
@@ -66,7 +68,7 @@ pub struct EntityIdIter<'a> {
 }
 
 /// Iterator for entity IDs filtered by component.
-pub struct EntityIdFilter<'a, C: Any + Clone> {
+pub struct EntityComponentFilter<'a, C: Any + Clone> {
   iter: Iter<'a, EntityId, ComponentSet>,
   _p: PhantomData<C>,
 }
@@ -88,17 +90,16 @@ impl<'a> Iterator for EntityIdIter<'a> {
   }
 }
 
-impl<'a, C> Iterator for EntityIdFilter<'a, C> where C: Any + Clone {
-  type Item = EntityId;
+impl<'a, C> Iterator for EntityComponentFilter<'a, C> where C: Any + Clone {
+  type Item = (EntityId, C);
   fn next(&mut self) -> Option<Self::Item> {
     loop {
       match self.iter.next() {
         None => return None,
-        Some((id, set)) => if set.contains::<C>() {
-          return Some(*id);
-        } else {
-          continue;
-        },
+        Some((id, set)) => match set.get::<C>() {
+          Some(cmp) => return Some((*id, cmp)),
+          None => continue,
+        }
       }
     }
   }
@@ -261,14 +262,14 @@ impl Ecs {
     self.iter_ids().collect()
   }
   /// Return an iterator over every ID with the specified component type.
-  pub fn iter_with<C: Any + Clone>(&self) -> EntityIdFilter<C> {
-    EntityIdFilter{iter: self.data.iter(), _p: PhantomData}
+  pub fn iter_with<C: Any + Clone>(&self) -> EntityComponentFilter<C> {
+    EntityComponentFilter{iter: self.data.iter(), _p: PhantomData}
   }
   /// Return a vector containing copies of every ID in the system with the
   /// specified component type.
   ///
   /// Useful for accessing filtered entity IDs without borrowing the ECS.
-  pub fn collect_with<C: Any + Clone>(&self) -> Vec<EntityId> {
+  pub fn collect_with<C: Any + Clone>(&self) -> Vec<(EntityId, C)> {
     self.iter_with::<C>().collect()
   }
   /// Return an iterator yielding references to all components of the
