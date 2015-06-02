@@ -1,30 +1,49 @@
 //! Simple entity-component system. Pure Rust (macro-free)!
 //!
 //! # Example
-//! ```
+//! ```rust
 //! extern crate recs;
 //! use recs::{Ecs, EntityId};
 //!
-//! #[derive(Clone, PartialEq)]
+//! #[derive(Clone, PartialEq, Debug)]
 //! struct Age{years: u32}
 //!
-//! #[derive(Clone, PartialEq)]
-//! struct Brain{iq: i32}
+//! #[derive(Clone, PartialEq, Debug)]
+//! struct Iq{points: i32}
 //!
 //! fn main() {
+//!
 //!     // Create an ECS instance
-//!     let mut ecs: Ecs = Ecs::new();
+//!     let mut system: Ecs = Ecs::new();
+//!
 //!     // Add entity to the system
-//!     let me: EntityId = ecs.create_entity();
-//!     // Attach component to the entity
-//!     ecs.set(me, &Age{years: 22});
-//!     // Get attached component data from entity
-//!     let older = ecs.get::<Age>(me).unwrap().years + 1;
+//!     let forrest: EntityId = system.create_entity();
+//!
+//!     // Attach components to the entity
+//!     system.set(forrest, &Age{years: 22});
+//!     system.set(forrest, &Iq{points: 75}); // "I may not be a smart man..."
+//!
+//!     // Get clone of attached component data from entity
+//!     let age = system.get::<Age>(forrest).unwrap();
+//!     assert_eq!(age.years, 22);
+//!
+//!     // Annotating the variable's type may let you skip type parameters
+//!     let iq: Iq = system.get(forrest).unwrap();
+//!     assert_eq!(iq.points, 75);
+//!
 //!     // Modify an entity's component
-//!     ecs.set(me, &Age{years: older});
-//!     // It works!
-//!     assert!(ecs.get::<Age>(me) == Some(Age{years: 23}));
-//!     assert!(ecs.get::<Brain>(me) == None); // Aw man...
+//!     let older = Age{years: age.years + 1};
+//!     system.set(forrest, &older);
+//!
+//!     // Modify a component in-place with a mutable borrow
+//!     system.borrow_mut::<Iq>(forrest).map(|iq| iq.points += 5);
+//!
+//!     // Inspect a component in-place without cloning
+//!     assert_eq!(system.borrow::<Age>(forrest), Some(&Age{years: 23}));
+//!
+//!     // Inspect a component via cloning
+//!     assert_eq!(system.get::<Iq>(forrest), Some(Iq{points: 80}));
+//!
 //! }
 //! ```
 // TODO iterate every E/C pair
@@ -43,6 +62,13 @@ use std::marker::PhantomData;
 /// should always be used in place of `u64` to ensure forwards compatiblity
 /// with potential implementation changes.
 pub type EntityId = u64;
+
+/// Marker trait for types which can be used as components.
+///
+/// `Component` is automatically implemented for all eligible types by the
+/// provided `impl`, so you don't have to worry about this! Hooray!
+pub trait Component: Clone + Any {}
+impl<T: Clone + Any> Component for T {}
 
 /// Primary data structure containing entity and component data.
 ///
@@ -68,7 +94,7 @@ pub struct EntityIdIter<'a> {
 }
 
 /// Iterator for entity IDs filtered by component.
-pub struct EntityComponentFilter<'a, C: Any + Clone> {
+pub struct EntityComponentFilter<'a, C: Component> {
   iter: Iter<'a, EntityId, ComponentSet>,
   _p: PhantomData<C>,
 }
@@ -90,13 +116,13 @@ impl<'a> Iterator for EntityIdIter<'a> {
   }
 }
 
-impl<'a, C> Iterator for EntityComponentFilter<'a, C> where C: Any + Clone {
-  type Item = (EntityId, C);
+impl<'a, C> Iterator for EntityComponentFilter<'a, C> where C: Component {
+  type Item = (EntityId, &'a C);
   fn next(&mut self) -> Option<Self::Item> {
     loop {
       match self.iter.next() {
         None => return None,
-        Some((id, set)) => match set.get::<C>() {
+        Some((id, set)) => match set.borrow::<C>() {
           Some(cmp) => return Some((*id, cmp)),
           None => continue,
         }
@@ -128,25 +154,25 @@ impl Default for ComponentSet {
 }
 
 impl ComponentSet {
-  fn set<C: Any + Clone>(&mut self, component: &C) -> Option<C> {
+  fn set<C: Component>(&mut self, component: &C) -> Option<C> {
     self.map.insert(TypeId::of::<C>(), Box::new(component.clone())).map(|old| {
       *old.downcast::<C>().ok().expect(
         "ComponentSet.set: internal downcast error")
     })
   }
-  fn get<C: Any + Clone>(&self) -> Option<C> {
+  fn get<C: Component>(&self) -> Option<C> {
     self.borrow::<C>().map(Clone::clone)
   }
-  fn contains<C: Any + Clone>(&self) -> bool {
+  fn contains<C: Component>(&self) -> bool {
     self.map.contains_key(&TypeId::of::<C>())
   }
-  fn borrow<C: Any + Clone>(&self) -> Option<&C> {
+  fn borrow<C: Component>(&self) -> Option<&C> {
     self.map.get(&TypeId::of::<C>()).map(|c| {
       c.downcast_ref()
         .expect("ComponentSet.borrow: internal downcast error")
     })
   }
-  fn borrow_mut<C: Any + Clone>(&mut self) -> Option<&mut C> {
+  fn borrow_mut<C: Component>(&mut self) -> Option<&mut C> {
     match self.map.get_mut(&TypeId::of::<C>()) {
       Some(c) => Some(c.downcast_mut()
         .expect("ComponentSet.borrow_mut: internal downcast error")),
@@ -200,7 +226,7 @@ impl Ecs {
   ///
   /// # Panics
   /// Panics if the requested entity does not exist.
-  pub fn set<C: Any + Clone>(&mut self, id: EntityId, comp: &C)
+  pub fn set<C: Component>(&mut self, id: EntityId, comp: &C)
     -> Option<C>
   {
     self.data.get_mut(&id)
@@ -214,7 +240,7 @@ impl Ecs {
   ///
   /// # Panics
   /// Panics if the requested entity does not exist.
-  pub fn get<C: Any + Clone>(&self, id: EntityId) -> Option<C> {
+  pub fn get<C: Component>(&self, id: EntityId) -> Option<C> {
     self.data.get(&id)
       .expect(&format!("Ecs.get: nil entity {}", id))
       .get::<C>()
@@ -224,7 +250,7 @@ impl Ecs {
   ///
   /// # Panics
   /// Panics if the requested entity does not exist.
-  pub fn has<C: Any + Clone>(&self, id: EntityId) -> bool {
+  pub fn has<C: Component>(&self, id: EntityId) -> bool {
     self.data.get(&id)
       .expect(&format!("Ecs.has: nil entity {}", id))
       .contains::<C>()
@@ -234,7 +260,7 @@ impl Ecs {
   ///
   /// # Panics
   /// Panics if the requested entity does not exist.
-  pub fn borrow<C: Any + Clone>(&self, id: EntityId) -> Option<&C> {
+  pub fn borrow<C: Component>(&self, id: EntityId) -> Option<&C> {
     self.data.get(&id)
       .expect(&format!("Ecs.borrow: nil entity {}", id))
       .borrow()
@@ -244,7 +270,7 @@ impl Ecs {
   ///
   /// # Panics
   /// Panics if the requested entity does not exist.
-  pub fn borrow_mut<C: Any + Clone>(&mut self, id: EntityId)
+  pub fn borrow_mut<C: Component>(&mut self, id: EntityId)
     -> Option<&mut C>
   {
     self.data.get_mut(&id)
@@ -261,16 +287,44 @@ impl Ecs {
   pub fn collect_ids(&self) -> Vec<EntityId> {
     self.iter_ids().collect()
   }
-  /// Return an iterator over every ID with the specified component type.
-  pub fn iter_with<C: Any + Clone>(&self) -> EntityComponentFilter<C> {
+  /// For every entity with a component of type `C`, yield a tuple containing
+  /// the entity's ID as well as a reference to its `C` component.
+  pub fn iter_with<C: Component>(&self) -> EntityComponentFilter<C> {
     EntityComponentFilter{iter: self.data.iter(), _p: PhantomData}
   }
-  /// Return a vector containing copies of every ID in the system with the
-  /// specified component type.
+  /// Return a vector containing the results of `iter_with`, but with cloned
+  /// components (rather than references).
   ///
-  /// Useful for accessing filtered entity IDs without borrowing the ECS.
-  pub fn collect_with<C: Any + Clone>(&self) -> Vec<(EntityId, C)> {
-    self.iter_with::<C>().collect()
+  /// Useful for accessing all entities with a given component without
+  /// initiating a borrow of the ECS.
+  pub fn collect_with<C: Component>(&self) -> Vec<(EntityId, C)> {
+    self.iter_with::<C>().map(|(id, c)| (id, c.clone())).collect()
+  }
+  /// Collect all entities with `C1` and `C2` components.
+  pub fn collect_with_2<C1: Component, C2: Component>(&self)
+      -> Vec<(EntityId, C1, C2)>
+  {
+    let mut ret = Vec::with_capacity(self.data.len());
+    for id in self.iter_ids() {
+      match (self.get::<C1>(id), self.get::<C2>(id)) {
+        (Some(c1), Some(c2)) => ret.push((id, c1, c2)),
+        _ => {}
+      }
+    }
+    ret
+  }
+  /// Collect all entities with `C1`, `C2`, and `C3` components.
+  pub fn collect_with_3<C1: Component, C2: Component, C3: Component>(&self)
+      -> Vec<(EntityId, C1, C2, C3)>
+  {
+    let mut ret = Vec::with_capacity(self.data.len());
+    for id in self.iter_ids() {
+      match (self.get::<C1>(id), self.get::<C2>(id), self.get::<C3>(id)) {
+        (Some(c1), Some(c2), Some(c3)) => ret.push((id, c1, c2, c3)),
+        _ => {}
+      }
+    }
+    ret
   }
   /// Return an iterator yielding references to all components of the
   /// requested entity.

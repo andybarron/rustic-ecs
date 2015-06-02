@@ -1,8 +1,9 @@
 use std::ops::Add;
+use std::collections::{HashMap, HashSet};
 extern crate recs;
 use recs::*;
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 struct Vector2f {
     x: f32,
     y: f32,
@@ -11,6 +12,9 @@ struct Vector2f {
 impl Vector2f {
     fn new(x: f32, y: f32) -> Self {
         Vector2f{x: x, y: y}
+    }
+    fn new_i64(x: i64, y: i64) -> Self {
+        Self::new(x as f32, y as f32)
     }
 }
 
@@ -21,10 +25,10 @@ impl Add for Vector2f {
     }
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 struct Position(Vector2f);
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 struct Velocity(Vector2f);
 
 fn update_position(pos: &Position, vel: &Velocity) -> Position {
@@ -32,7 +36,7 @@ fn update_position(pos: &Position, vel: &Velocity) -> Position {
 }
 
 #[test]
-fn test() {
+fn test_update() {
     let a_start = Vector2f::new(1., 3.);
     let b_start = Vector2f::new(-3., 4.);
     let c_start = Vector2f::new(-0., 1.3);
@@ -57,4 +61,40 @@ fn test() {
     assert!(ecs.get::<Position>(a) == Some(Position(a_start + a_vel)));
     assert!(ecs.get::<Position>(b) == Some(Position(b_start + b_vel)));
     assert!(ecs.get::<Position>(c) == Some(Position(c_start)));
+}
+
+#[test]
+fn test_collect() {
+    let count = 500;
+    let mut ids = Vec::with_capacity(count);
+    let mut starts = HashMap::with_capacity(count);
+    let mut speeds = HashMap::with_capacity(count);
+    let mut system = Ecs::new();
+    for c in 0..count {
+        let i = c as i64;
+        let id = system.create_entity();
+        let pos = Position( Vector2f::new_i64(4*i-7, -2*i+3) );
+        let vel = Velocity( Vector2f::new_i64(-100*i+350, 500*i-900) );
+        ids.push(id);
+        starts.insert(id, pos);
+        speeds.insert(id, vel);
+        system.set(id, &pos);
+        system.set(id, &vel);
+    }
+    // check that all ids are contained within ECS
+    assert_eq!(
+        ids.iter().cloned().collect::<HashSet<_>>(),
+        system.iter_ids().collect::<HashSet<_>>()
+    );
+    let to_update = system.collect_with_2::<Position, Velocity>();
+    for tup in to_update.iter() {
+        let (id, pos, vel) = *tup;
+        let new_pos = Position(pos.0 + vel.0);
+        system.set(id, &new_pos);
+    }
+    // check that all positions are properly updated
+    for id in system.iter_ids() {
+        let target_pos = Position( starts[&id].0 + speeds[&id].0 );
+        assert_eq!(Some(target_pos), system.get(id));
+    }
 }
