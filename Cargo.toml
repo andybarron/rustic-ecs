@@ -1,10 +1,10 @@
 [package]
 
 name = "recs"
-version = "1.0.1"
+version = "1.1.0"
 authors = ["Andy Barron <AndrewLBarron@gmail.com>"]
 
-description = "Simple entity-component system in pure Rust. Type reflection - no macros!"
+description = "Simple, macro-free entity-component system in pure Rust."
 
 repository = "https://github.com/andybarron/rustic-ecs"
 
