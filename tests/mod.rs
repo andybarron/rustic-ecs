@@ -1,5 +1,6 @@
 use std::ops::Add;
 use std::collections::{HashMap, HashSet};
+#[macro_use]
 extern crate recs;
 use recs::*;
 
@@ -11,7 +12,7 @@ struct Vector2f {
 
 impl Vector2f {
     fn new(x: f32, y: f32) -> Self {
-        Vector2f{x: x, y: y}
+        Vector2f { x: x, y: y }
     }
     fn new_i64(x: i64, y: i64) -> Self {
         Self::new(x as f32, y as f32)
@@ -21,7 +22,10 @@ impl Vector2f {
 impl Add for Vector2f {
     type Output = Vector2f;
     fn add(self, other: Self) -> Self {
-        Vector2f{x: self.x+other.x, y: self.y+other.y}
+        Vector2f {
+            x: self.x + other.x,
+            y: self.y + other.y,
+        }
     }
 }
 
@@ -46,21 +50,23 @@ fn test_update() {
     let a = ecs.create_entity();
     let b = ecs.create_entity();
     let c = ecs.create_entity();
-    ecs.set(a, &Position(a_start));
-    ecs.set(a, &Velocity(a_vel));
-    ecs.set(b, &Position(b_start));
-    ecs.set(b, &Velocity(b_vel));
-    ecs.set(c, &Position(c_start));
-    for id in ecs.collect_ids() {
+    let _ = ecs.set(a, Position(a_start));
+    let _ = ecs.set(a, Velocity(a_vel));
+    let _ = ecs.set(b, Position(b_start));
+    let _ = ecs.set(b, Velocity(b_vel));
+    let _ = ecs.set(c, Position(c_start));
+    let mut ids = Vec::new();
+    ecs.collect(&mut ids);
+    for id in ids {
         let p = ecs.get::<Position>(id);
         let v = ecs.get::<Velocity>(id);
-        if let (Some(pos), Some(vel)) = (p, v) {
-            ecs.set(id, &update_position(&pos, &vel));
+        if let (Ok(pos), Ok(vel)) = (p, v) {
+            let _ = ecs.set(id, update_position(&pos, &vel));
         }
     }
-    assert!(ecs.get::<Position>(a) == Some(Position(a_start + a_vel)));
-    assert!(ecs.get::<Position>(b) == Some(Position(b_start + b_vel)));
-    assert!(ecs.get::<Position>(c) == Some(Position(c_start)));
+    assert!(ecs.get::<Position>(a) == Ok(Position(a_start + a_vel)));
+    assert!(ecs.get::<Position>(b) == Ok(Position(b_start + b_vel)));
+    assert!(ecs.get::<Position>(c) == Ok(Position(c_start)));
 }
 
 #[test]
@@ -73,28 +79,32 @@ fn test_collect() {
     for c in 0..count {
         let i = c as i64;
         let id = system.create_entity();
-        let pos = Position( Vector2f::new_i64(4*i-7, -2*i+3) );
-        let vel = Velocity( Vector2f::new_i64(-100*i+350, 500*i-900) );
+        let pos = Position(Vector2f::new_i64(4 * i - 7, -2 * i + 3));
+        let vel = Velocity(Vector2f::new_i64(-100 * i + 350, 500 * i - 900));
         ids.push(id);
         starts.insert(id, pos);
         speeds.insert(id, vel);
-        system.set(id, &pos);
-        system.set(id, &vel);
+        let _ = system.set(id, pos);
+        let _ = system.set(id, vel);
     }
     // check that all ids are contained within ECS
-    assert_eq!(
-        ids.iter().cloned().collect::<HashSet<_>>(),
-        system.iter_ids().collect::<HashSet<_>>()
-    );
-    let to_update = system.collect_with_2::<Position, Velocity>();
-    for tup in to_update.iter() {
-        let (id, pos, vel) = *tup;
+    assert_eq!(ids.iter().cloned().collect::<HashSet<_>>(),
+               system.iter().collect::<HashSet<_>>());
+    let components = component_filter!(Position, Velocity);
+    let mut to_update = Vec::new();
+    system.collect_with(&components, &mut to_update);
+    for id in to_update.iter().cloned() {
+        // We can safely call unwrap() here, because
+        // collect_with(..) guarantees that all of these
+        // entities have Position and Velocity
+        let pos: Position = system.get(id).unwrap();
+        let vel: Velocity = system.get(id).unwrap();
         let new_pos = Position(pos.0 + vel.0);
-        system.set(id, &new_pos);
+        let _ = system.set(id, new_pos);
     }
     // check that all positions are properly updated
-    for id in system.iter_ids() {
-        let target_pos = Position( starts[&id].0 + speeds[&id].0 );
-        assert_eq!(Some(target_pos), system.get(id));
+    for id in system.iter() {
+        let target_pos = Position(starts[&id].0 + speeds[&id].0);
+        assert_eq!(Ok(target_pos), system.get(id));
     }
 }

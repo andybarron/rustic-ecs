@@ -1,2 +1,5 @@
 /target
 /Cargo.lock
+
+# Backup files from `cargo fmt`
+*.rs.bk

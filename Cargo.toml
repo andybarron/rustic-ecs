@@ -1,15 +1,11 @@
 [package]
-
 name = "recs"
-version = "1.1.0"
+version = "2.0.0"
 authors = ["Andy Barron <AndrewLBarron@gmail.com>"]
 
-description = "Simple, macro-free entity-component system in pure Rust."
-
+description = "Simple, flexible, macro-free entity-component system in pure (stable!) Rust."
 repository = "https://github.com/andybarron/rustic-ecs"
-
+documentation = "https://andybarron.github.io/rustic-ecs"
 readme = "./README.md"
-
 keywords = ["entity", "entity-component", "component", "system", "ecs"]
-
 license = "MIT"
