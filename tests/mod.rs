@@ -108,3 +108,40 @@ fn test_collect() {
         assert_eq!(Ok(target_pos), system.get(id));
     }
 }
+
+#[test]
+fn test_remove_component_from_entity() {
+    let mut system = Ecs::new();
+    let entity = system.create_entity();
+    let position1 = Position(Vector2f::new(42.0, 43.0));
+    let position2 = Position(Vector2f::new(44.0, 45.0));
+    let velocity = Velocity(Vector2f::new(46.0, 47.0));
+    let mut filtered_entities = vec![];
+
+    if let Some(_) = system.unset::<Position>(entity).unwrap() {
+        panic!("non-existent component removed")
+    }
+
+    system.set(entity, position1).unwrap();
+    let expect_position_1: Position = system.unset::<Position>(entity).unwrap().expect("removed component not returned");
+    assert_eq!(expect_position_1, position1);
+
+    
+    system.collect_with(&component_filter!(Position), &mut filtered_entities);
+    assert_eq!(0, filtered_entities.iter().count());
+
+    system.set(entity, position1).unwrap();
+    system.set(entity, position2).unwrap();
+    let expect_position_2: Position = system.unset::<Position>(entity).unwrap().expect("removed component not returned");
+    assert_eq!(expect_position_2, position2);
+
+    system.collect_with(&component_filter!(Position), &mut filtered_entities);
+    assert_eq!(0, filtered_entities.iter().count());
+
+    system.set(entity, position1).unwrap();
+    system.set(entity, velocity).unwrap();
+    system.unset::<Position>(entity).unwrap().expect("removed component not returned");
+
+    system.collect_with(&component_filter!(Velocity), &mut filtered_entities);
+    assert_eq!(1, filtered_entities.iter().count());
+}

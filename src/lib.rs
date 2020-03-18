@@ -186,6 +186,13 @@ impl ComponentMap {
             .insert(TypeId::of::<C>(), Box::new(component))
             .map(|old| *old.downcast::<C>().expect("ComponentMap.set: internal downcast error"))
     }
+
+    fn unset<C: Component>(&mut self) -> Option<C> {
+        self.map
+            .remove(&TypeId::of::<C>())
+            .map(|old| *old.downcast::<C>().expect("ComponentMap.unset: internal downcast error"))
+    }
+
     fn borrow<C: Component>(&self) -> EcsResult<&C> {
         self.map
             .get(&TypeId::of::<C>())
@@ -251,6 +258,17 @@ impl Ecs {
             .ok_or_else(|| NotFound::Entity(id))
             .map(|map| map.set(comp))
     }
+    /// For the specified entity, remove a component of type `C` from the system.
+    ///
+    /// If the entity already has a component `prev` of type `C`, return `Some(prev)`. If not,
+    /// return `None`. If the entity does not exist, return `NotFound::Entity`.
+    pub fn unset<C: Component>(&mut self, id: EntityId) -> EcsResult<Option<C>> {
+        self.data
+            .get_mut(&id)
+            .ok_or_else(|| NotFound::Entity(id))
+            .map(|map| map.unset::<C>())
+    }
+
     /// Return a clone of the requested entity's component of type `C`, or a `NotFound` variant
     /// if the entity does not exist or does not have that component.
     ///
