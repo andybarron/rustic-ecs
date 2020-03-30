@@ -63,6 +63,14 @@ type IdNumber = u64;
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct EntityId(IdNumber);
 
+impl EntityId{
+    /// Returns the unique ID number underlying this EntityId, useful as a
+    /// serializable version of the ID
+    pub fn get_id_number(&self) -> u64 {
+        self.0
+    }
+}
+
 /// Error type for ECS results that require a specific entity or component.
 #[derive(Debug, PartialEq, Eq)]
 pub enum NotFound {
@@ -120,7 +128,7 @@ impl ComponentFilter {
     }
     /// Return an iterator over all the contained component types.
     #[allow(needless_lifetimes)] // https://github.com/Manishearth/rust-clippy/issues/740
-    pub fn iter<'a>(&'a self) -> Box<Iterator<Item = TypeId> + 'a> {
+    pub fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = TypeId> + 'a> {
         Box::new(self.set.iter().cloned())
     }
 }
@@ -177,7 +185,7 @@ pub struct Ecs {
 
 #[derive(Default)]
 struct ComponentMap {
-    map: HashMap<TypeId, Box<Any>>,
+    map: HashMap<TypeId, Box<dyn Any>>,
 }
 
 impl ComponentMap {
@@ -289,7 +297,7 @@ impl Ecs {
     }
     /// Return `true` if each component type in the filter is present on the entity `id`.
     pub fn has_all(&self, id: EntityId, set: &ComponentFilter) -> EcsResult<bool> {
-        let map = try!(self.data.get(&id).ok_or_else(|| NotFound::Entity(id)));
+        let map = self.data.get(&id).ok_or_else(|| NotFound::Entity(id))?;
         Ok(set.iter().all(|type_id| map.contains_type_id(&type_id)))
     }
     /// Return a shared reference to the requested entity's component of type `C`, or a
@@ -310,7 +318,7 @@ impl Ecs {
     }
     /// Return an iterator over every ID in the system.
     #[allow(needless_lifetimes)] // https://github.com/Manishearth/rust-clippy/issues/740
-    pub fn iter<'a>(&'a self) -> Box<Iterator<Item = EntityId> + 'a> {
+    pub fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = EntityId> + 'a> {
         Box::new(self.data.keys().cloned())
     }
     /// Collect all entity IDs into a vector (after emptying the vector).

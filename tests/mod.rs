@@ -1,6 +1,5 @@
 use std::ops::Add;
 use std::collections::{HashMap, HashSet};
-#[macro_use]
 extern crate recs;
 use recs::*;
 
